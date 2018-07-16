@@ -80,6 +80,11 @@ read_pzfx <- function(path, data_table = 1) {
   # get the number of rows to fill each vector with NA if required
   n_rows <- max(xml_length(xml_find_all(xml_dt,  "//d1:Subcolumn")))
 
+  # Table might be empty
+  if (n_rows == 0) {
+    warning("the prism data table is empty", call. = FALSE)
+    return(data.frame())
+  }
 
   xml <- xml_find_all(xml_dt, "./d1:RowTitlesColumn|./d1:XColumn|./d1:YColumn")
 
