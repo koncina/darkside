@@ -30,11 +30,9 @@ column_to_data_frame <- function(x, n_rows, x_columns) {
   rows <- data.frame(row = seq_len(n_rows), stringsAsFactors = FALSE)
   if(nrow(x_columns) > 0) rows <- cbind(rows, x_columns, stringsAsFactors = FALSE)
 
-  column <- data.frame(column = NA_integer_, stringsAsFactors = FALSE)
-  if (!is.null(attr(x, "group_name"))) column <- cbind(column, group_name = attr(x, "group_name"), stringsAsFactors = FALSE)
-
   lapply(seq_along(x), function(i) data.frame(rows,
-                                              column,
+                                              column = NA_integer_,
+                                              group_name = ifelse(is.null(attr(x, "group_name")), NA_character_, attr(x, "group_name")),
                                               subcolumn = i,
                                               y_value =  (`length<-`(x[[i]], n_rows)),
                                               stringsAsFactors = FALSE
@@ -115,6 +113,9 @@ read_pzfx <- function(path, data_table = 1) {
     colnames(out)[colnames(out) == "XColumn"] <- "x_value"
   }
 
+  if (all(is.na(out["group_name"]))) out["group_name"] <- NULL
+
   class(out) <- c("tbl_df", "tbl", "data.frame") # Setting tibble class to allow pretty printing without tibble dependency
   out
 }
+
