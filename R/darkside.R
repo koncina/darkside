@@ -110,6 +110,13 @@ read_pzfx <- function(path, data_table = 1) {
   out <- lapply(seq_along(out), function(x) {out[[x]]["column"] <- x; out[[x]]})
   out <- do.call("rbind", out)
 
+  # is.null(out) should work but it might be safer to test the length of y_column...
+  if (length(y_columns) == 0) {
+    out <- x_columns
+  } else if (all(is.na(out["group_name"]))) {
+    out["group_name"] <- NULL
+  }
+
   colnames(out)[colnames(out) == "RowTitlesColumn"] <- "row_name"
   x_colname <- attr(columns[["XColumn"]], "group_name")
   if (!is.null(x_colname)) {
@@ -118,7 +125,7 @@ read_pzfx <- function(path, data_table = 1) {
     colnames(out)[colnames(out) == "XColumn"] <- "x_value"
   }
 
-  if (all(is.na(out["group_name"]))) out["group_name"] <- NULL
+
 
   class(out) <- c("tbl_df", "tbl", "data.frame") # Setting tibble class to allow pretty printing without tibble dependency
   out
