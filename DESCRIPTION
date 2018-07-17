@@ -1,9 +1,8 @@
 Package: darkside
 Type: Package
 Title: Import Graphpad prism pzfx files as a data frame / tibble
-Version: 0.1.0
+Version: 0.0.9000
 Authors@R: c(person("Eric", "Koncina", , "mail@koncina.eu", c("aut", "cre")))
-Maintainer: The package maintainer <yourself@somewhere.net>
 Description: Import the data tables contained in Graphpad prism pzfx files as a data frame / tibble.
 Imports:
   xml2
