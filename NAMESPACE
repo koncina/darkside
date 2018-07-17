@@ -3,5 +3,4 @@
 export(pzfx_tables)
 export(read_pzfx)
 import(xml2)
-importFrom(stats,setNames)
 importFrom(utils,type.convert)

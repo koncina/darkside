@@ -1,44 +1,37 @@
 #' @import xml2
 #' @importFrom utils type.convert
-#' @importFrom stats setNames
 
 NULL
 
-extract_subcolumn <- function(x) {
-  cells <- xml_find_all(x, "./d1:d")
-  cells <- xml_text(cells)
-  type.convert(cells, na.strings = c("NA", ""), as.is = TRUE, dec = ",") # Is the decimal point always "," in pzfx files?
+get_column_titles <- function(x) {
+  xml_text(xml_find_all(x, "./d1:Title"))
 }
 
-extract_column <- function(x) {
-  column <- xml_find_all(x, "./d1:Subcolumn")
-  column <- lapply(column, extract_subcolumn)
+get_subcolumn_values <- function(x) {
+  values <- xml_text(xml_find_all(x, "./d1:Subcolumn/d1:d"))
+  type.convert(values, na.strings = c("NA", ""), as.is = TRUE, dec = ",") # Is the decimal point always "," in pzfx files?
+}
 
-  group_name <- xml_text(xml_find_all(x, "./d1:Title"))
-
-  if (isTRUE(nchar(group_name) > 0)) {
-    attr(column, "group_name") <- group_name
+standardise_data_table <- function(path, data_table) {
+  if (length(data_table) != 1) {
+    stop("`data_table` must have length 1", call. = FALSE)
   }
 
-  column
+  pzfx_dt <- pzfx_tables(path)
+
+  if (is.numeric(data_table)) {
+    if (data_table < 1 || data_table > length(pzfx_dt)) stop("`data_table` index out of range", call. = FALSE)
+  } else if (is.character(data_table)) {
+    if (data_table %in% pzfx_dt) data_table <- which(pzfx_dt == data_table)
+    else stop(sprintf("data table '%s' not found", data_table), call. = FALSE)
+  } else stop("`data_table` must be either an integer or a string.", call. = FALSE)
+  data_table
 }
 
-column_to_data_frame <- function(x, n_rows, x_columns) {
-  # using seq_len instead of seq_along to create homogene number of rows
-  # Doing it here will preserve attributes and makes the life easier...
-
-  rows <- data.frame(row = seq_len(n_rows), stringsAsFactors = FALSE)
-  if(nrow(x_columns) > 0) rows <- cbind(rows, x_columns, stringsAsFactors = FALSE)
-
-  lapply(seq_along(x), function(i) data.frame(rows,
-                                              column = NA_integer_,
-                                              group_name = ifelse(is.null(attr(x, "group_name")), NA_character_, attr(x, "group_name")),
-                                              subcolumn = i,
-                                              y_value =  (`length<-`(x[[i]], n_rows)),
-                                              stringsAsFactors = FALSE
-  )
-  )
-
+fake_tibble <- function(...) {
+  x <- data.frame(..., stringsAsFactors = FALSE, check.names = FALSE, check.rows = FALSE)
+  class(x) <- c("tbl_df", "tbl", "data.frame") # Setting tibble class to allow pretty printing without tibble dependency
+  x
 }
 
 #' List all data tables in a pzfx file
@@ -68,66 +61,53 @@ pzfx_tables <- function(path) {
 #'
 #' @export
 read_pzfx <- function(path, data_table = 1) {
+
+  data_table <- standardise_data_table(path, data_table)
+
   xml <- read_xml(path)
+  xml_dt <- xml_find_all(xml, paste0("//d1:GraphPadPrismFile/d1:Table[", data_table, "]"))
+  y_columns <- xml_find_all(xml_dt, "./d1:YColumn")
 
-  pzfx_dt <- pzfx_tables(path)
+  n_subcolumns <- as.numeric(xml_attr(y_columns, "Subcolumns"))
+  n_cells <- xml_length(xml_find_all(y_columns, "./d1:Subcolumn"))
 
-  if (is.character(data_table)) data_table <- which(pzfx_dt == data_table)
-  if (is.numeric(data_table) && !isTRUE(data_table %in% seq_along(pzfx_dt))) stop("data_table index out of range")
+  # Check if data table is empty...
+  if (sum(n_cells) == 0) return(fake_tibble())
 
-  xml_dt <- xml_find_all(xml, "//d1:GraphPadPrismFile/d1:Table")[[data_table]]
+  #column_idx <- unlist(mapply(rep_len, seq_along(n_subcolumns), n_subcolumns, SIMPLIFY = FALSE))
+  #column_idx <- unlist(mapply(rep_len, column_idx, n_cells, SIMPLIFY = FALSE))
+  column_idx <- unlist(mapply(rep_len, rep(seq_along(n_subcolumns), n_subcolumns), n_cells, SIMPLIFY = FALSE))
 
-  # get the number of rows to fill each vector with NA if required
-  n_rows <- max(xml_length(xml_find_all(xml_dt,  "//d1:Subcolumn")))
+  # Y Columns
+  column_names <- rep(rep(get_column_titles(y_columns), n_subcolumns), n_cells)
 
-  # Table might be empty
-  if (n_rows == 0) {
-    warning("the prism data table is empty", call. = FALSE)
-    return(data.frame())
-  }
+  subcolumn_idx <- unlist(lapply(n_subcolumns, seq_len))
+  subcolumn_idx <- unlist(mapply(rep_len, subcolumn_idx, n_cells, SIMPLIFY = FALSE))
 
-  xml <- xml_find_all(xml_dt, "./d1:RowTitlesColumn|./d1:XColumn|./d1:YColumn")
+  row_idx <- unlist(lapply(n_cells, seq_len))
 
-  column_types <- lapply(xml, xml_name)
-  xml <- setNames(xml, column_types)
+  y_values <- get_subcolumn_values(y_columns)
 
-  columns <- lapply(xml, extract_column)
-  # We are not keeping the group_name attrtibute doing it here...
-  #columns <- lapply(columns, lapply, `length<-`, n_rows)
+  # X Column
+  x_column <- xml_find_all(xml_dt, "./d1:XColumn")
+  x_values <- get_subcolumn_values(x_column)
+  x_values <- unlist(lapply(n_cells, function(x) x_values[0:x]))
 
-  x_columns <- lapply(columns[names(columns) != "YColumn"], unlist)
-  #if (length(x_columns) == 0) x_columns <- list(RowTitlesColumn = NA_character_)
+  x_name <- xml_text(xml_find_all(x_column, "./d1:Title"))
 
-  x_columns <- lapply(x_columns, `length<-`, n_rows)
-  #x_columns <- do.call("cbind", x_columns)
-  x_columns <- as.data.frame(x_columns, stringsAsFactors = FALSE)
+  # Rownames
+  row_names <- xml_text(xml_find_all(xml_dt, "./d1:RowTitlesColumn/d1:Subcolumn/d1:d"))
+  row_names <- unlist(lapply(n_cells, function(x) row_names[0:x]))
 
-  y_columns <- columns[names(columns) == "YColumn"]
+  out_df <- fake_tibble(row = row_idx,
+                        row_name = row_names,
+                        x_value = x_values,
+                        column = column_idx,
+                        column_name = column_names,
+                        subcolumn = subcolumn_idx,
+                        y_value = y_values)
 
-  out <- lapply(y_columns, column_to_data_frame, n_rows, x_columns)
-  out <- lapply(out, function(x) do.call("rbind", x))
-  #out <- lapply(seq_along(out), function(x) cbind(out[[x]], column = x))
-  out <- lapply(seq_along(out), function(x) {out[[x]]["column"] <- x; out[[x]]})
-  out <- do.call("rbind", out)
+  if (isTRUE(nchar(x_name) > 0)) colnames(out_df)[colnames(out_df) == "x_value"] <- x_name
 
-  # is.null(out) should work but it might be safer to test the length of y_column...
-  if (length(y_columns) == 0) {
-    out <- x_columns
-  } else if (all(is.na(out["group_name"]))) {
-    out["group_name"] <- NULL
-  }
-
-  colnames(out)[colnames(out) == "RowTitlesColumn"] <- "row_name"
-  x_colname <- attr(columns[["XColumn"]], "group_name")
-  if (!is.null(x_colname)) {
-    colnames(out)[colnames(out) == "XColumn"] <- x_colname
-  } else {
-    colnames(out)[colnames(out) == "XColumn"] <- "x_value"
-  }
-
-
-
-  class(out) <- c("tbl_df", "tbl", "data.frame") # Setting tibble class to allow pretty printing without tibble dependency
-  out
+  out_df[, colSums(is.na(out_df)) < nrow(out_df)]
 }
-
