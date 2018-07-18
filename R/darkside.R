@@ -9,7 +9,25 @@ get_column_titles <- function(x) {
   col_idx <- col_idx - as.numeric(gsub(".*\\[(\\d+)\\]$", "\\1", xml_path(x[1]))) + 1
   out <- character(length(x))
   out[col_idx] <- xml_text(xml_titles)
+  out[out == ""]  <- NA_character_
   out
+}
+
+# Most of the time subcolumns contain different observations or timepoints
+# But prism allows also to enter already calculated error values (SD, SEM...)
+# We need to provide this information as subcolumn_names
+
+get_subcolumn_titles <- function(xml_table) {
+  switch(xml_attr(xml_table, "YFormat"),
+         SDN = c("mean", "sd", "n"),
+         SEM = c("mean", "sem", "n"),
+         CVN = c("mean", "percent_cv", "n"),
+         SD = c("mean", "sd"),
+         SE = c("mean", "sem"),
+         CV = c("mean", "percent_cv"),
+         `low-high` = c("mean", "error_high", "error_low"),
+         `upper-lower-limits` = c("mean", "limit_upper", "limit_lower")
+  )
 }
 
 get_subcolumn_values <- function(x) {
@@ -94,6 +112,14 @@ read_pzfx <- function(path, data_table = 1) {
   subcolumn_idx <- unlist(lapply(n_subcolumns, seq_len))
   subcolumn_idx <- unlist(mapply(rep_len, subcolumn_idx, n_cells, SIMPLIFY = FALSE))
 
+  subcolumn_names <- get_subcolumn_titles(xml_dt)
+
+  if (is.null(subcolumn_names)) {
+    subcolumn_names <- NA_character_
+  } else {
+    subcolumn_names <- rep(rep(subcolumn_names, length(y_columns)), n_cells)
+  }
+
   row_idx <- unlist(lapply(n_cells, seq_len))
 
   y_values <- get_subcolumn_values(y_columns)
@@ -115,6 +141,7 @@ read_pzfx <- function(path, data_table = 1) {
                         column = column_idx,
                         column_name = column_names,
                         subcolumn = subcolumn_idx,
+                        subcolumn_name = subcolumn_names,
                         y_value = y_values)
 
   if (isTRUE(nchar(x_name) > 0)) colnames(out_df)[colnames(out_df) == "x_value"] <- x_name
