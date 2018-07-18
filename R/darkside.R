@@ -4,7 +4,12 @@
 NULL
 
 get_column_titles <- function(x) {
-  xml_text(xml_find_all(x, "./d1:Title"))
+  xml_titles <- xml_find_all(x, "./d1:Title")
+  col_idx <- as.numeric(gsub("^.*\\[(\\d+)\\]\\/\\*\\[\\d+\\]$", "\\1", xml_path(xml_titles)))
+  col_idx <- col_idx - as.numeric(gsub(".*\\[(\\d+)\\]$", "\\1", xml_path(x[1]))) + 1
+  out <- character(length(x))
+  out[col_idx] <- xml_text(xml_titles)
+  out
 }
 
 get_subcolumn_values <- function(x) {
