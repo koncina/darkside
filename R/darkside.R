@@ -21,11 +21,16 @@ standardise_data_table <- function(path, data_table) {
 
   if (is.numeric(data_table)) {
     if (data_table < 1 || data_table > length(pzfx_dt)) stop("`data_table` index out of range", call. = FALSE)
+    data_table_out <- data_table
   } else if (is.character(data_table)) {
-    if (data_table %in% pzfx_dt) data_table <- which(pzfx_dt == data_table)
-    else stop(sprintf("data table '%s' not found", data_table), call. = FALSE)
+    data_table_out <- which(pzfx_dt == data_table)
+
+    if (length(data_table_out) == 0) stop(sprintf("data table '%s' not found", data_table), call. = FALSE)
+    else if (length(data_table_out) > 1) {
+      stop(sprintf("multiple data tables are named '%s': select the data table by index", data_table), call. = FALSE)
+    }
   } else stop("`data_table` must be either an integer or a string.", call. = FALSE)
-  data_table
+  data_table_out
 }
 
 fake_tibble <- function(...) {
