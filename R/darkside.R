@@ -30,9 +30,36 @@ get_subcolumn_titles <- function(xml_table) {
   )
 }
 
-get_subcolumn_values <- function(x) {
-  values <- xml_text(xml_find_all(x, "./d1:Subcolumn/d1:d"))
+get_subcolumn_values <- function(x, subcolumn = "*") {
+  values <- xml_text(xml_find_all(x, paste0("./d1:Subcolumn[", subcolumn, "]/d1:d")))
   type.convert(values, na.strings = c("NA", ""), as.is = TRUE, dec = ",") # Is the decimal point always "," in pzfx files?
+}
+
+get_x_columns <- function(node_table) {
+
+  x_columns <- list()
+
+  # We could first test if the node is present but this seems to be faster...
+  row_names <- xml_text(xml_find_all(node_table, "./d1:RowTitlesColumn/d1:Subcolumn/d1:d"))
+  if (length(row_names) > 0) x_columns <- list(row_name = row_names)
+
+  if (xml_attr(node_table, "XFormat") != "none") {
+    x_column <- xml_find_first(node_table, "./d1:XColumn")
+    x_name <- xml_text(xml_find_all(x_column, "./d1:Title"))
+
+    if (nchar(x_name) == 0 || length(x_name) == 0) x_name <- "x_value"
+
+    x_column <- get_subcolumn_values(x_column)
+    if (length(x_column) > 0) x_columns[[x_name]] <- x_column
+  }
+
+  if (xml_attr(node_table, "XFormat") == "startenddate") {
+    x_advanced_columns <- xml_find_first(node_table, "./d1:XAdvancedColumn")
+    x_advanced_columns <- lapply(c(start_date = 1, end_data = 2), function(x) get_subcolumn_values(x_advanced_columns, x))
+    x_columns <- c(x_columns, x_advanced_columns)
+  }
+
+  x_columns
 }
 
 standardise_data_table <- function(path, data_table) {
@@ -120,31 +147,20 @@ read_pzfx <- function(path, data_table = 1) {
     subcolumn_names <- rep(rep(subcolumn_names, length(y_columns)), n_cells)
   }
 
-  row_idx <- unlist(lapply(n_cells, seq_len))
-
   y_values <- get_subcolumn_values(y_columns)
 
-  # X Column
-  x_column <- xml_find_all(xml_dt, "./d1:XColumn")
-  x_values <- get_subcolumn_values(x_column)
-  x_values <- unlist(lapply(n_cells, function(x) x_values[0:x]))
+  x_columns <- get_x_columns(xml_dt)
 
-  x_name <- xml_text(xml_find_all(x_column, "./d1:Title"))
+  # Using the number of rows in each subcolumn, we generate the row ids and appropriate x_columns
+  x_columns <- c(list(row_id = unlist(lapply(n_cells, seq_len))),
+                 lapply(x_columns, function(x) unlist(lapply(n_cells, function(y) x[0:y]))))
 
-  # Rownames
-  row_names <- xml_text(xml_find_all(xml_dt, "./d1:RowTitlesColumn/d1:Subcolumn/d1:d"))
-  row_names <- unlist(lapply(n_cells, function(x) row_names[0:x]))
-
-  out_df <- fake_tibble(row = row_idx,
-                        row_name = row_names,
-                        x_value = x_values,
+  out_df <- fake_tibble(x_columns,
                         column = column_idx,
                         column_name = column_names,
                         subcolumn = subcolumn_idx,
                         subcolumn_name = subcolumn_names,
                         y_value = y_values)
-
-  if (isTRUE(nchar(x_name) > 0)) colnames(out_df)[colnames(out_df) == "x_value"] <- x_name
 
   out_df[, colSums(is.na(out_df)) < nrow(out_df)]
 }
