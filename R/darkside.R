@@ -1,5 +1,6 @@
 #' @import xml2
 #' @importFrom utils type.convert
+#' @importFrom stats setNames
 
 NULL
 
