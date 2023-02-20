@@ -101,6 +101,9 @@ fake_tibble <- function(...) {
 #' @export
 pzfx_tables <- function(path) {
   xml <- read_xml(path)
+  # Try to add prism namespace if it's missing...
+  # Probably not the best way to handle this
+  if (!"d1" %in% names(xml_ns(xml))) xml_attr(xml, "xmlns") <- "http://graphpad.com/prism/Prism.htm"
   table_name_nodes <- xml_find_all(xml, "//d1:GraphPadPrismFile/d1:Table/d1:Title")
   xml_text(xml_contents(table_name_nodes))
 }
@@ -121,6 +124,9 @@ read_pzfx <- function(path, data_table = 1) {
   data_table <- standardise_data_table(path, data_table)
 
   xml <- read_xml(path)
+  # Try to add prism namespace if it's missing...
+  # Probably not the best way to handle this
+  if (!"d1" %in% names(xml_ns(xml))) xml_attr(xml, "xmlns") <- "http://graphpad.com/prism/Prism.htm"
   table_node <- xml_find_all(xml, paste0("//d1:GraphPadPrismFile/d1:Table[", data_table, "]"))
 
   y_column_nodes <- xml_find_all(table_node, "./d1:YColumn")
